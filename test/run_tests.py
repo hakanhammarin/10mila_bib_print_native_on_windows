@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Testprogram för native nummerlappsutskrift på Windows (utan Acrobat).
-Kör testerna T0-T5 i PLAN.md och loggar resultaten i test/out/results.md.
+Kör testerna T0-T5 och TC i PLAN.md och loggar resultaten i test/out/results.md.
 
     python run_tests.py              # meny
     python run_tests.py t3           # ett test direkt
@@ -28,6 +28,7 @@ REPO_DIR = TEST_DIR.parent
 OUT_DIR = TEST_DIR / "out"
 RESULTS = OUT_DIR / "results.md"
 CALIBRATION_PDF = TEST_DIR / "calibration_225x160.pdf"
+PLAIN_CALIBRATION = {"A4": TEST_DIR / "calibration_A4.pdf", "A5": TEST_DIR / "calibration_A5.pdf"}
 SAMPLE_BIB_PDF = TEST_DIR / "sample_bib.pdf"
 
 # Papperet i facket: 160 x 225 mm stående (kortsidan först)
@@ -292,6 +293,23 @@ def t2(args):
             "kalibreringssidan som PDF med @PJL ENTER LANGUAGE=PDF", via="raw9100")
 
 
+def tc(args):
+    """TC: kalibrering på vanligt A4/A5-papper: 100 % skalning och marginaler (--size A4 eller A5)."""
+    size = args.size or "A4"
+    print(f"\nTC {size}: lägg vanligt {size}-papper i facket och ställ in facket på {size} på skrivarens panel.")
+    if not args.dry_run:
+        input("Tryck Enter när papperet ligger i ... ")
+    ps = OUT_DIR / f"tc_{size}.ps"
+    try:
+        secs = convert(PLAIN_CALIBRATION[size], "gs_land", ps)  # ingen rotation, sidan har redan papperets format
+    except Exception as e:
+        print(f"  ❌ {e}")
+        log("tc", size, f"KONVERTERINGSFEL: {e}", args)
+        return
+    deliver(wrap_job(ps.read_bytes(), f"TC {size}", args.tray, not args.no_pjl), f"TC {size}", args,
+            "tc", size, f"calibration_{size}.pdf på vanligt papper, konvertering {secs:.1f} s")
+
+
 def t3(args):
     """T3: kalibreringssidan i alla orienteringsvarianter."""
     variants = [args.orient] if args.orient else list(ORIENTS)
@@ -337,7 +355,7 @@ def t5(args):
             "t5", v, f"sample_bib.pdf via kön '{args.printer}', konvertering {secs:.1f} s", via="spooler")
 
 
-TESTS = {"info": t_info, "t0": t0, "t1": t1, "t2": t2, "t3": t3, "t4": t4, "t5": t5}
+TESTS = {"info": t_info, "t0": t0, "t1": t1, "tc": tc, "t2": t2, "t3": t3, "t4": t4, "t5": t5}
 
 
 def menu(args):
@@ -360,6 +378,7 @@ def main():
     p.add_argument("--printer", default="OKIC542PS", help="namnet på utskriftskön i Windows (T5)")
     p.add_argument("--via", choices=["raw9100", "spooler"], default="raw9100")
     p.add_argument("--orient", choices=list(ORIENTS) + ["pp_land"], help="bara en variant")
+    p.add_argument("--size", choices=list(PLAIN_CALIBRATION), help="papper för tc (A4 eller A5)")
     p.add_argument("--tray", type=int, help="tvinga fack med PostScript /MediaPosition N")
     p.add_argument("--no-pjl", action="store_true", help="skicka utan PJL-huvud")
     p.add_argument("--dry-run", action="store_true", help="skapa filer i test/out men skicka inget")

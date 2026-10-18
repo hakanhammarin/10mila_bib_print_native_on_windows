@@ -1,34 +1,56 @@
 #!/usr/bin/env python3
 """
-Skapar test/calibration_225x160.pdf: en kalibreringssida i samma format som
-nummerlapparna (225 x 160 mm liggande) för att se rotation, skalning och
-hur mycket av kanterna skrivaren klipper bort.
+Skapar kalibreringssidor för att kontrollera rotation, 100 % skalning och
+skrivarens marginaler:
+
+    test/calibration_A4.pdf        210 x 297 mm stående (vanligt A4-papper)
+    test/calibration_A5.pdf        148 x 210 mm stående (vanligt A5-papper)
+    test/calibration_225x160.pdf   225 x 160 mm liggande (samma som nummerlapparna)
+
+Varje sida har gränslinjer 5 mm och 10 mm från papperskanten, mm-streck 1-10 mm
+in från varje kant och linjaler på 100 mm i båda riktningarna.
 """
 from pathlib import Path
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
-W, H = 225 * mm, 160 * mm
-OUT = Path(__file__).parent / "calibration_225x160.pdf"
+TEST_DIR = Path(__file__).parent
+
+SIZES = {
+    "A4": (210, 297),
+    "A5": (148, 210),
+    "225x160": (225, 160),
+}
 
 
-def edge_ticks(c):
+def boundary_lines(c, W, H):
+    """Gränslinjer där marginalerna förväntas ligga: heldragen 5 mm, streckad 10 mm."""
+    c.setLineWidth(0.6)
+    c.rect(5 * mm, 5 * mm, W - 10 * mm, H - 10 * mm)
+    c.setDash(3, 2)
+    c.rect(10 * mm, 10 * mm, W - 20 * mm, H - 20 * mm)
+    c.setDash()
+    c.setFont("Helvetica", 5)
+    c.drawString(5 * mm + 1, H - 5 * mm - 6, "5 mm")
+    c.drawString(10 * mm + 1, H - 10 * mm - 6, "10 mm")
+
+
+def edge_ticks(c, W, H):
     """Streck 1-10 mm in från varje kant. Det första synliga strecket visar hur mycket som klipps."""
     c.setLineWidth(0.3)
     c.setFont("Helvetica", 5)
+    xm, ym = W * 0.62, H * 0.62  # var strecken sitter längs kanterna
     for d in range(1, 11):
         x = d * mm
-        # vänster och höger kant
-        c.line(x, H / 2 - 4 * mm, x, H / 2 + 4 * mm)
-        c.line(W - x, H / 2 - 4 * mm, W - x, H / 2 + 4 * mm)
-        # nederkant och överkant
-        c.line(W / 3 - 4 * mm, x, W / 3 + 4 * mm, x)
-        c.line(W / 3 - 4 * mm, H - x, W / 3 + 4 * mm, H - x)
+        c.line(x, ym - 4 * mm, x, ym + 4 * mm)
+        c.line(W - x, ym - 4 * mm, W - x, ym + 4 * mm)
+        c.line(xm - 4 * mm, x, xm + 4 * mm, x)
+        c.line(xm - 4 * mm, H - x, xm + 4 * mm, H - x)
         if d % 2 == 0:
-            c.drawString(x - 1, H / 2 + 5 * mm, str(d))
-            c.drawRightString(W - x + 1, H / 2 + 5 * mm, str(d))
-            c.drawString(W / 3 + 5 * mm, x - 1.5, str(d))
-            c.drawString(W / 3 + 5 * mm, H - x - 1.5, str(d))
+            c.drawCentredString(x, ym + 5 * mm, str(d))
+            c.drawCentredString(W - x, ym + 5 * mm, str(d))
+            c.drawString(xm + 5 * mm, x - 1.5, str(d))
+            c.drawString(xm + 5 * mm, H - x - 1.5, str(d))
 
 
 def ruler(c, x0, y0, length_mm, vertical=False):
@@ -51,45 +73,51 @@ def ruler(c, x0, y0, length_mm, vertical=False):
                 c.drawCentredString(x0 + i * mm, y0 + 5 * mm, str(i))
 
 
-def main():
-    c = canvas.Canvas(str(OUT), pagesize=(W, H))
-    c.setTitle("Kalibrering 225x160")
-
-    # Ram 5 mm in från kanten
-    c.setLineWidth(0.8)
-    c.rect(5 * mm, 5 * mm, W - 10 * mm, H - 10 * mm)
-    edge_ticks(c)
-
-    # Hörnmarkeringar
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(7 * mm, H - 11 * mm, "UV")
-    c.drawRightString(W - 7 * mm, H - 11 * mm, "UH")
-    c.drawString(7 * mm, 7 * mm, "NV")
-    c.drawRightString(W - 7 * mm, 7 * mm, "NH")
-
-    # Pil mot överkanten
-    cx = W * 0.7
+def arrow_up(c, cx, top, label):
     c.setLineWidth(2)
-    c.line(cx, H - 60 * mm, cx, H - 20 * mm)
+    c.line(cx, top - 35 * mm, cx, top)
     p = c.beginPath()
-    p.moveTo(cx - 6 * mm, H - 28 * mm)
-    p.lineTo(cx, H - 18 * mm)
-    p.lineTo(cx + 6 * mm, H - 28 * mm)
+    p.moveTo(cx - 5 * mm, top - 8 * mm)
+    p.lineTo(cx, top)
+    p.lineTo(cx + 5 * mm, top - 8 * mm)
     c.drawPath(p, stroke=1, fill=0)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(cx, H - 66 * mm, "UPP / TOP")
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(cx, top - 41 * mm, label)
 
-    # Linjaler: 200 mm vågrätt, 140 mm lodrätt
-    ruler(c, 12.5 * mm, 20 * mm, 200)
-    ruler(c, 20 * mm, 12.5 * mm, 140, vertical=True)
 
-    c.setFont("Helvetica-Bold", 28)
-    c.drawCentredString(W * 0.45, H * 0.52, "225 x 160 mm")
-    c.setFont("Helvetica", 9)
-    c.drawCentredString(W * 0.45, H * 0.52 - 8 * mm,
-                        "Linjalen ska mäta exakt 100 mm mellan 0 och 100. Ramen ligger 5 mm in.")
-    c.drawCentredString(W * 0.45, H * 0.52 - 13 * mm,
-                        "Första synliga strecket vid kanten = hur många mm skrivaren klipper.")
+def make_page(name, w_mm, h_mm):
+    W, H = w_mm * mm, h_mm * mm
+    out = TEST_DIR / f"calibration_{name}.pdf"
+    c = canvas.Canvas(str(out), pagesize=(W, H))
+    c.setTitle(f"Kalibrering {name}")
+
+    boundary_lines(c, W, H)
+    edge_ticks(c, W, H)
+
+    # Hörnmarkeringar innanför 10 mm-linjen
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(12 * mm, H - 16 * mm, "UV")
+    c.drawRightString(W - 12 * mm, H - 16 * mm, "UH")
+    c.drawString(12 * mm, 13 * mm, "NV")
+    c.drawRightString(W - 12 * mm, 13 * mm, "NH")
+
+    # Linjaler 100 mm vågrätt och lodrätt, från 20 mm in
+    ruler(c, 20 * mm, 20 * mm, 100)
+    ruler(c, 20 * mm, 20 * mm, 100, vertical=True)
+
+    arrow_up(c, W * 0.75, H - 16 * mm, "UPP / TOP")
+
+    c.setFont("Helvetica-Bold", 24)
+    title = name if name.startswith("A") else "Nummerlapp"
+    c.drawCentredString(W * 0.5, H * 0.5 + 4 * mm, f"{title}  {w_mm} x {h_mm} mm")
+    c.setFont("Helvetica", 8)
+    tx = W * 0.5
+    ty = H * 0.5 - 4 * mm
+    for line in ("Linjalerna ska mäta exakt 100 mm (0 till 100) = 100 % skalning.",
+                 "Heldragen ram = 5 mm från kanten, streckad ram = 10 mm.",
+                 "Första synliga strecket vid kanten = hur många mm skrivaren klipper."):
+        c.drawCentredString(tx, ty, line)
+        ty -= 4 * mm
 
     # Färgrutor CMYK
     for i, col in enumerate([(1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)]):
@@ -98,7 +126,12 @@ def main():
 
     c.showPage()
     c.save()
-    print(f"Skrev {OUT}")
+    print(f"Skrev {out}")
+
+
+def main():
+    for name, (w, h) in SIZES.items():
+        make_page(name, w, h)
 
 
 if __name__ == "__main__":

@@ -128,8 +128,9 @@ Prepare:
 |---|------|---------------|------|
 | T0 | `Test-NetConnection OKIC542PS -Port 9100` (also 515, 631) in PowerShell | Which raw ports the printer accepts | 9100 open |
 | T1 | Send a tiny hand-written PS file (one A4 page with text) to 9100 | Raw PS works at all | A page comes out |
+| TC | Print `calibration_A4.pdf` and `calibration_A5.pdf` on plain A4 / A5 paper (tray set to that size) | 100 % scaling and the printer's real unprintable margins, independent of the bib paper | Both 100 mm rulers measure 100 mm; 5 mm frame visible (10 mm frame as fallback); note the first visible edge tick on each side |
 | T2 | Send `1.pdf` with `@PJL ENTER LANGUAGE=PDF` to 9100 | Whether Fallback 1 exists | Bib prints, or error page / nothing |
-| T3 | Send a **calibration page** (frame 5 mm inside the edges, "TOP" arrow, 10 mm ruler marks, the text "225x160") four ways: PageSize portrait + PS rotate 90, portrait + rotate 270, landscape PageSize with printer matching, landscape + `/Policies` | Which combination lands right side up, unscaled, from Tray 1 | Frame fully visible, ruler marks measure 10 mm, correct tray, no "load paper" prompt |
+| T3 | Send the bib-size **calibration page** `calibration_225x160.pdf` (frames at 5 and 10 mm, "TOP" arrow, 100 mm rulers) four ways: PageSize portrait + PS rotate 90, portrait + rotate 270, landscape PageSize with printer matching, landscape + `/Policies` | Which combination lands right side up, unscaled, from Tray 1 | Frame fully visible, ruler marks measure 10 mm, correct tray, no "load paper" prompt |
 | T4 | Convert `1.pdf` with Ghostscript and with pdftops, send with the winning T3 setup | Converter choice; transparency, fonts, colours, barcode sharpness | Looks identical to an Acrobat print held next to it, barcode scans |
 | T5 | Same as T4 but through the spooler (`spooler_raw`) | Whether the queue path works too | Same result, job visible in the queue |
 | T6 | Run the full program: Startnummer 1, Antal 2 | End-to-end process, file move to `printed` | 20 pages, both files in `printed` |
@@ -143,7 +144,7 @@ printer model and firmware (panel: Configuration / Print Information).
 
 ## 6. Order of work
 
-1. ✓ Test kit added (`test/`, `tools/`). You run `info` and T0–T5 and send back `test/out/results.md`.
+1. ✓ Test kit added (`test/`, `tools/`). You run `info`, T0, T1, TC and T2–T5 and send back `test/out/results.md`.
 2. From the results I fix backend, converter and rotation in `settings.py`
    defaults and write `bib_print.py` + `print_backend.py`.
 3. You run T6–T8 on the real setup.
