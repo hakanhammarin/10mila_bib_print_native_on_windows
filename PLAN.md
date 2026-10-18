@@ -14,6 +14,8 @@ Taken from `acrobat_print_2.py`, `nummerlappar.cmd`, `settings.py` and
 - Prompt `Startnummer:` then `Antal:`, `exit` quits. Same Swedish messages
   (`✅ Skickat`, `⚠️ Saknas`, `❌ Misslyckades`).
 - Each printed file is moved to `C:\bibs\out_bibs\printed`.
+- All 10 pages of each file are printed, **in reverse order: page 10 first, page 1 last**
+  (new, asked for 2026-10-18). Ghostscript does the reordering in the conversion step.
 - Settings stay in `settings.py` (`WIN_PRINTER_NAME = "OKIC542PS"`,
   `WIN_SOURCE_DIR = r"C:\bibs\out_bibs"`), plus a few new keys (section 4).
 - Printer: OKI C542 with PostScript, reached by the hosts entry
@@ -120,7 +122,7 @@ Prepare:
   `OKIC542PS` (as in the settings guide), hosts entry in place.
 - Printer: Tray 1 = Custom 160 x 225 mm, paper loaded short edge first.
 - Plenty of plain A4 for the early tests plus a stack of bib paper.
-- I will put the test files and a `test/run_tests.py` in the repo before you start.
+- Test kit is in `test/` (see `test/README.md`), tools are bundled in `tools/`.
 
 | # | Test | What we learn | Pass |
 |---|------|---------------|------|
@@ -141,15 +143,14 @@ printer model and firmware (panel: Configuration / Print Information).
 
 ## 6. Order of work
 
-1. I add the test assets (calibration page, PJL variants, `test/run_tests.py`)
-   to this repo. You run T0–T5 and report.
+1. ✓ Test kit added (`test/`, `tools/`). You run `info` and T0–T5 and send back `test/out/results.md`.
 2. From the results I fix backend, converter and rotation in `settings.py`
    defaults and write `bib_print.py` + `print_backend.py`.
 3. You run T6–T8 on the real setup.
 4. README with the install steps, the same style as the Acrobat settings guide.
 5. Optional: PyInstaller `.exe`.
 
-## 7. Open questions for you
+## 7. Decisions
 
-- Is the 10-page file meant to print all 10 pages (one bib per leg)? I assume yes, as Acrobat does today.
-- Is it fine to bundle Ghostscript (AGPL) or poppler (GPL) in the repo? For an internal tool that is normally no problem; the alternative is installing them separately.
+- All 10 pages of each file print, in reverse order (10 to 1).
+- Ghostscript and poppler are bundled in `tools/` (see `tools/README.md`).
