@@ -11,7 +11,6 @@ Kör testerna T0-T5 och TC i PLAN.md och loggar resultaten i test/out/results.md
 Bara Pythons standardbibliotek behövs.
 """
 import argparse
-import ctypes
 import datetime
 import glob
 import os
@@ -20,165 +19,22 @@ import shutil
 import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 TEST_DIR = Path(__file__).resolve().parent
 REPO_DIR = TEST_DIR.parent
+sys.path.insert(0, str(REPO_DIR))
+from print_backend import (  # noqa: E402
+    ORIENTS, PAPER_H_PT, PAPER_W_PT, convert, ghostscript, pdftops, pdf_job,
+    send_raw9100, send_spooler_raw, wrap_job,
+)
+
 OUT_DIR = TEST_DIR / "out"
 RESULTS = OUT_DIR / "results.md"
 CALIBRATION_PDF = TEST_DIR / "calibration_225x160.pdf"
 PLAIN_CALIBRATION = {"A4": TEST_DIR / "calibration_A4.pdf", "A5": TEST_DIR / "calibration_A5.pdf"}
 SAMPLE_BIB_PDF = TEST_DIR / "sample_bib.pdf"
-
-# Papperet i facket: 160 x 225 mm stående (kortsidan först)
-PAPER_W_PT = 453.543
-PAPER_H_PT = 637.795
-
-UEL = b"\x1b%-12345X"
-
-# Orienteringar som testas i T3. cw/ccw = vi roterar själva, land = skrivaren väljer.
-ORIENTS = {
-    "gs_cw": "Ghostscript, stående sida, roterad medurs",
-    "gs_ccw": "Ghostscript, stående sida, roterad moturs",
-    "gs_land": "Ghostscript, liggande sida 225x160, skrivaren matchar facket",
-    "pp_rot": "pdftops, stående sida, pdftops roterar själv (sidorna i normal ordning)",
-}
-
-
-# ==================== Verktyg ====================
-
-def find_tool(names, bundled):
-    for p in bundled:
-        if os.name == "nt" and p.exists():  # medföljande .exe bara på Windows
-            return str(p)
-    for n in names:
-        found = shutil.which(n)
-        if found:
-            return found
-    return None
-
-
-def ghostscript():
-    return find_tool(["gswin64c", "gs"], [REPO_DIR / "tools" / "gs" / "bin" / "gswin64c.exe"])
-
-
-def pdftops():
-    return find_tool(["pdftops"], [REPO_DIR / "tools" / "poppler" / "pdftops.exe"])
-
-
-def run(cmd):
-    t = time.time()
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        raise RuntimeError(f"{Path(cmd[0]).name} misslyckades ({res.returncode}): {res.stderr.strip() or res.stdout.strip()}")
-    return time.time() - t
-
-
-# ==================== Konvertering PDF -> PS ====================
-
-def ps_string(path):
-    """Filnamn som PostScript-sträng. Ghostscript klarar / även på Windows."""
-    return "(" + str(Path(path).resolve()).replace("\\", "/").replace("(", "\\(").replace(")", "\\)") + ")"
-
-
-def convert(pdf, variant, out_ps, reverse=True):
-    """Konverterar pdf till PostScript enligt variant. Returnerar sekunder det tog.
-    reverse=True skriver sidorna i omvänd ordning (10 -> 1), bara med Ghostscript."""
-    out_ps = str(out_ps)
-    if variant.startswith("gs_"):
-        gs = ghostscript()
-        if not gs:
-            raise RuntimeError("Hittar inte Ghostscript (tools/gs/bin/gswin64c.exe)")
-        cmd = [gs, "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", f"--permit-file-read={Path(pdf).resolve()}",
-               "-sDEVICE=ps2write", f"-sOutputFile={out_ps}"]
-        setup = ""
-        if variant == "gs_cw":
-            setup = f"<< /BeginPage {{ pop 0 {PAPER_H_PT} translate -90 rotate }} >> setpagedevice "
-        elif variant == "gs_ccw":
-            setup = f"<< /BeginPage {{ pop {PAPER_W_PT} 0 translate 90 rotate }} >> setpagedevice "
-        if setup:
-            cmd += ["-dFIXEDMEDIA", f"-dDEVICEWIDTHPOINTS={PAPER_W_PT}", f"-dDEVICEHEIGHTPOINTS={PAPER_H_PT}"]
-        order = "pdfpagecount -1 1" if reverse else "1 1 pdfpagecount"
-        pages = (f"{ps_string(pdf)} (r) file runpdfbegin {order} {{ pdfgetpage pdfshowpage }} for runpdfend")
-        return run(cmd + ["-c", setup + pages])
-    if variant.startswith("pp_"):
-        pp = pdftops()
-        if not pp:
-            raise RuntimeError("Hittar inte pdftops (tools/poppler/pdftops.exe)")
-        if variant == "pp_land":
-            return run([pp, "-level3", "-origpagesizes", str(pdf), out_ps])
-        return run([pp, "-level3", "-paperw", "454", "-paperh", "638", "-nocenter", str(pdf), out_ps])
-    raise ValueError(variant)
-
-
-def wrap_job(ps_bytes, name, tray=None, pjl=True):
-    """Lägger PJL-huvud och ev. facksval runt PostScript-jobbet."""
-    prefix = b""
-    if tray is not None:
-        prefix = f"%!PS-Adobe-3.0\n<< /MediaPosition {int(tray)} >> setpagedevice\n".encode()
-    body = prefix + ps_bytes
-    if not pjl:
-        return body
-    head = (UEL + b"@PJL JOB NAME=\"" + name.encode("ascii", "replace") + b"\"\r\n"
-            b"@PJL ENTER LANGUAGE=POSTSCRIPT\r\n")
-    tail = b"\r\n\x04" + UEL + b"@PJL EOJ\r\n" + UEL
-    return head + body + tail
-
-
-def pdf_job(pdf_bytes, name):
-    return (UEL + b"@PJL JOB NAME=\"" + name.encode("ascii", "replace") + b"\"\r\n"
-            b"@PJL ENTER LANGUAGE=PDF\r\n" + pdf_bytes + UEL + b"@PJL EOJ\r\n" + UEL)
-
-
-# ==================== Skicka ====================
-
-def send_raw9100(data, host, port=9100):
-    t = time.time()
-    with socket.create_connection((host, port), timeout=15) as s:
-        s.sendall(data)
-        s.shutdown(socket.SHUT_WR)
-        s.settimeout(5)
-        try:
-            while s.recv(4096):
-                pass
-        except (socket.timeout, ConnectionResetError):
-            pass
-    return time.time() - t
-
-
-def send_spooler_raw(data, printer, doc_name):
-    """Skickar färdigt PostScript via Windows utskriftskö med datatyp RAW (drivrutinen renderar inget)."""
-    if os.name != "nt":
-        raise RuntimeError("Utskriftskön finns bara på Windows")
-    from ctypes import wintypes
-
-    class DOC_INFO_1(ctypes.Structure):
-        _fields_ = [("pDocName", wintypes.LPWSTR), ("pOutputFile", wintypes.LPWSTR), ("pDatatype", wintypes.LPWSTR)]
-
-    ws = ctypes.WinDLL("winspool.drv", use_last_error=True)
-    t = time.time()
-    h = wintypes.HANDLE()
-    if not ws.OpenPrinterW(printer, ctypes.byref(h), None):
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        di = DOC_INFO_1(doc_name, None, "RAW")
-        if not ws.StartDocPrinterW(h, 1, ctypes.byref(di)):
-            raise ctypes.WinError(ctypes.get_last_error())
-        try:
-            ws.StartPagePrinter(h)
-            written = wintypes.DWORD()
-            chunk = 1 << 20
-            for i in range(0, len(data), chunk):
-                part = data[i:i + chunk]
-                if not ws.WritePrinter(h, part, len(part), ctypes.byref(written)) or written.value != len(part):
-                    raise ctypes.WinError(ctypes.get_last_error())
-            ws.EndPagePrinter(h)
-        finally:
-            ws.EndDocPrinter(h)
-    finally:
-        ws.ClosePrinter(h)
-    return time.time() - t
+A5_PORTRAIT_PT = (419.528, 595.276)  # A5-papper stående i facket
 
 
 # ==================== Logg ====================
@@ -294,20 +150,28 @@ def t2(args):
 
 
 def tc(args):
-    """TC: kalibrering på vanligt A4/A5-papper: 100 % skalning och marginaler (--size A4 eller A5)."""
+    """TC: kalibrering på vanligt papper: A4 stående, A5 liggande som en nummerlapp (--size A4 eller A5)."""
     size = args.size or "A4"
-    print(f"\nTC {size}: lägg vanligt {size}-papper i facket och ställ in facket på {size} på skrivarens panel.")
+    print(f"\nTC {size}: lägg vanligt {size}-papper i facket (kortsidan in) och ställ in facket på {size} på panelen.")
     if not args.dry_run:
         input("Tryck Enter när papperet ligger i ... ")
-    ps = OUT_DIR / f"tc_{size}.ps"
-    try:
-        secs = convert(PLAIN_CALIBRATION[size], "gs_land", ps)  # ingen rotation, sidan har redan papperets format
-    except Exception as e:
-        print(f"  ❌ {e}")
-        log("tc", size, f"KONVERTERINGSFEL: {e}", args)
-        return
-    deliver(wrap_job(ps.read_bytes(), f"TC {size}", args.tray, not args.no_pjl), f"TC {size}", args,
-            "tc", size, f"calibration_{size}.pdf på vanligt papper, konvertering {secs:.1f} s")
+    if size == "A4":
+        # A4 stående på A4 stående: ingen rotation, bara 100 % och marginaler
+        variants, paper = ["gs_land"], None
+    else:
+        # A5 liggande på A5 stående papper: samma rotation som nummerlappen, alla varianter som i T3
+        variants, paper = ([args.orient] if args.orient else list(ORIENTS)), A5_PORTRAIT_PT
+    for v in variants:
+        ps = OUT_DIR / f"tc_{size}_{v}.ps"
+        try:
+            secs = convert(PLAIN_CALIBRATION[size], v, ps, **({"paper": paper} if paper else {}))
+        except Exception as e:
+            print(f"  ❌ {e}")
+            log("tc", f"{size} {v}", f"KONVERTERINGSFEL: {e}", args)
+            continue
+        what = "ingen rotation" if size == "A4" else ORIENTS[v]
+        deliver(wrap_job(ps.read_bytes(), f"TC {size} {v}", args.tray, not args.no_pjl), f"TC {size}", args,
+                "tc", f"{size}_{v}", f"calibration_{size}.pdf på vanligt papper, {what}, konvertering {secs:.1f} s")
 
 
 def t3(args):

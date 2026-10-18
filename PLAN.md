@@ -11,6 +11,7 @@ Taken from `acrobat_print_2.py`, `nummerlappar.cmd`, `settings.py` and
 
 - Program and bibs live in `C:\bibs`, bibs in `C:\bibs\out_bibs\<nr>.pdf`.
 - Operator starts `nummerlappar.cmd` from the desktop.
+- New: typing `R101` at the Startnummer prompt reprints bib 101 from `printed` (the file stays there).
 - Prompt `Startnummer:` then `Antal:`, `exit` quits. Same Swedish messages
   (`✅ Skickat`, `⚠️ Saknas`, `❌ Misslyckades`).
 - Each printed file is moved to `C:\bibs\out_bibs\printed`.
@@ -128,7 +129,7 @@ Prepare:
 |---|------|---------------|------|
 | T0 | `Test-NetConnection OKIC542PS -Port 9100` (also 515, 631) in PowerShell | Which raw ports the printer accepts | 9100 open |
 | T1 | Send a tiny hand-written PS file (one A4 page with text) to 9100 | Raw PS works at all | A page comes out |
-| TC | Print `calibration_A4.pdf` and `calibration_A5.pdf` on plain A4 / A5 paper (tray set to that size) | 100 % scaling and the printer's real unprintable margins, independent of the bib paper | Both 100 mm rulers measure 100 mm; 5 mm frame visible (10 mm frame as fallback); note the first visible edge tick on each side |
+| TC | Print `calibration_A4.pdf` (portrait) on plain A4, and `calibration_A5.pdf` (landscape, simulating the bib) on plain A5 in all four T3 variants | 100 % scaling, the real unprintable margins, and the bib rotation, without using bib paper | Both 100 mm rulers measure 100 mm; 5 mm frame visible (10 mm frame as fallback); note the first visible edge tick on each side |
 | T2 | Send `1.pdf` with `@PJL ENTER LANGUAGE=PDF` to 9100 | Whether Fallback 1 exists | Bib prints, or error page / nothing |
 | T3 | Send the bib-size **calibration page** `calibration_225x160.pdf` (frames at 5 and 10 mm, "TOP" arrow, 100 mm rulers) four ways: PageSize portrait + PS rotate 90, portrait + rotate 270, landscape PageSize with printer matching, landscape + `/Policies` | Which combination lands right side up, unscaled, from Tray 1 | Frame fully visible, ruler marks measure 10 mm, correct tray, no "load paper" prompt |
 | T4 | Convert `1.pdf` with Ghostscript and with pdftops, send with the winning T3 setup | Converter choice; transparency, fonts, colours, barcode sharpness | Looks identical to an Acrobat print held next to it, barcode scans |
@@ -145,8 +146,8 @@ printer model and firmware (panel: Configuration / Print Information).
 ## 6. Order of work
 
 1. ✓ Test kit added (`test/`, `tools/`). You run `info`, T0, T1, TC and T2–T5 and send back `test/out/results.md`.
-2. From the results I fix backend, converter and rotation in `settings.py`
-   defaults and write `bib_print.py` + `print_backend.py`.
+2. ✓ `bib_print.py`, `print_backend.py`, `settings.py`, `nummerlappar.cmd` written (default `gs_cw` over raw 9100).
+   From the test results I set the right defaults in `settings.py`.
 3. You run T6–T8 on the real setup.
 4. README with the install steps, the same style as the Acrobat settings guide.
 5. Optional: PyInstaller `.exe`.

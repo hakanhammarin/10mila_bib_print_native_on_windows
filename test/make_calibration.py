@@ -4,7 +4,7 @@ Skapar kalibreringssidor för att kontrollera rotation, 100 % skalning och
 skrivarens marginaler:
 
     test/calibration_A4.pdf        210 x 297 mm stående (vanligt A4-papper)
-    test/calibration_A5.pdf        148 x 210 mm stående (vanligt A5-papper)
+    test/calibration_A5.pdf        210 x 148 mm liggande (vanligt A5-papper, simulerar nummerlappen)
     test/calibration_225x160.pdf   225 x 160 mm liggande (samma som nummerlapparna)
 
 Varje sida har gränslinjer 5 mm och 10 mm från papperskanten, mm-streck 1-10 mm
@@ -18,7 +18,7 @@ TEST_DIR = Path(__file__).parent
 
 SIZES = {
     "A4": (210, 297),
-    "A5": (148, 210),
+    "A5": (210, 148),  # liggande som nummerlappen
     "225x160": (225, 160),
 }
 
